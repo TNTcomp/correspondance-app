@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Correspondance — Moteur multi-catalogues</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--navy:#0A2342;--navy2:#123158;--accent:#D4A017;--ok:#1a8a4c;--ko:#c0392b;--bg:#0c1b33;--card:#12294d;--txt:#e8edf5;--mut:#9db0c9;--line:#22406e}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Segoe UI",Arial,sans-serif;background:linear-gradient(160deg,var(--bg),#081226);color:var(--txt);min-height:100vh;padding:20px}
+.wrap{max-width:1150px;margin:0 auto}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.logo{width:46px;height:46px;border-radius:10px;background:var(--navy2);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--accent);border:1px solid var(--line)}
+h1{font-size:20px;letter-spacing:.5px}
+h1 span{color:var(--accent)}
+.sub{color:var(--mut);font-size:12.5px;margin-top:2px}
+.bar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.bar label.t{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+select,input[type=text]{background:var(--navy);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--txt);font-size:14px;outline:none}
+select:focus,input:focus{border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:9px}
+.step{display:inline-block;background:var(--navy2);border-radius:6px;padding:1px 8px;font-size:11px;color:var(--mut);margin-bottom:8px}
+.btn{display:inline-block;background:var(--navy2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer;font-size:13.5px;transition:.15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.gold{background:var(--accent);color:#1a1a1a;font-weight:600;border-color:var(--accent)}
+.btn.gold:hover{filter:brightness(1.08);color:#1a1a1a}
+.btn.danger:hover{border-color:var(--ko);color:#f1948a}
+input[type=file]{display:none}
+.info{color:var(--mut);font-size:12px;margin-top:8px;line-height:1.5}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px;text-align:center}
+.stat b{display:block;font-size:21px;color:var(--accent)}
+.stat span{font-size:11.5px;color:var(--mut)}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.tools input{flex:1;min-width:180px}
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:10px;overflow:hidden;font-size:13.5px}
+th{background:var(--navy);padding:9px 12px;text-align:left;font-size:12px;letter-spacing:.6px;color:var(--accent)}
+td{padding:7px 12px;border-top:1px solid var(--line)}
+tr:hover td{background:rgba(212,160,23,.06)}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600}
+.b-ok{background:rgba(26,138,76,.18);color:#5fd695}
+.b-ko{background:rgba(192,57,43,.18);color:#f1948a}
+.mono{font-family:Consolas,monospace;letter-spacing:.4px}
+.hifi{color:var(--accent);font-weight:600}
+.cat{font-size:11px;color:var(--mut)}
+.empty{padding:36px;text-align:center;color:var(--mut)}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tab{background:var(--card);border:1px solid var(--line);border-radius:8px 8px 0 0;padding:8px 18px;cursor:pointer;font-size:13.5px;color:var(--mut)}
+.tab.on{color:var(--accent);border-bottom:2px solid var(--accent)}
+.warn{background:rgba(212,160,23,.12);border:1px solid rgba(212,160,23,.4);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--accent);margin-bottom:12px;display:none}
+footer{margin-top:20px;color:var(--mut);font-size:11.5px;text-align:center;line-height:1.7}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div class="logo">&#9851;</div>
+<div>
+<h1>AGENT <span>CORRESPONDANCE</span></h1>
+<div class="sub">Import Excel &rarr; Recherche en cache multi-catalogues &rarr; Export Excel</div>
+</div>
+</header>
+
+<div class="warn" id="warn"></div>
+
+<div class="bar">
+<label class="t">Catalogue actif</label>
+<select id="selCat" onchange="selChange()"></select>
+<button class="btn" onclick="document.getElementById('fcat').click()">&#10133; Ajouter un catalogue (Excel / JSON)</button>
+<button class="btn" onclick="document.getElementById('fupd').click()">&#128260; Mettre &agrave; jour le catalogue actif</button>
+<button class="btn danger" onclick="supprimerCatalogue()">&#10005; Supprimer le catalogue actif</button>
+<input type="file" id="fcat" accept=".xlsx,.xls,.csv,.json">
+<input type="file" id="fupd" accept=".xlsx,.xls,.csv,.json">
+</div>
+
+<div class="grid">
+<div class="card">
+<span class="step">&Eacute;tape 1</span>
+<h2>Importer vos r&eacute;f&eacute;rences</h2>
+<label class="btn" for="fsrc">&#128194; Choisir fichier Excel (.xlsx / .xls / .csv)</label>
+<input type="file" id="fsrc" accept=".xlsx,.xls,.csv">
+<div class="info" id="srcinfo">Fichier des r&eacute;f&eacute;rences &agrave; chercher (r&eacute;f&eacute;rences en 1&egrave;re colonne).</div>
+</div>
+<div class="card">
+<span class="step">&Eacute;tape 2</span>
+<h2>Recherche en cache</h2>
+<button class="btn" onclick="lancerRecherche()">&#128269; Lancer la recherche</button>
+<div class="info">Le moteur applique le m&ecirc;me processus de correspondance sur le(s) catalogue(s) en cache (normalisation, ignore espaces et tirets). S&eacute;lectionnez un catalogue pr&eacute;cis ou <b>Tous</b>.</div>
+</div>
+<div class="card">
+<span class="step">&Eacute;tape 3</span>
+<h2>Export Excel</h2>
+<button class="btn gold" onclick="exporter()">&#11015; Exporter le fichier Excel</button>
+<div class="info">2 colonnes : <b>R&eacute;f&eacute;rence import&eacute;e</b> | <b>R&eacute;f&eacute;rence catalogue</b></div>
+</div>
+</div>
+
+<div class="stats">
+<div class="stat"><b id="s-tot">0</b><span>R&eacute;f&eacute;rences import&eacute;es</span></div>
+<div class="stat"><b id="s-ok">0</b><span>Correspondances trouv&eacute;es</span></div>
+<div class="stat"><b id="s-ko">0</b><span>Non trouv&eacute;es</span></div>
+<div class="stat"><b id="s-bas">0</b><span>R&eacute;f&eacute;rences du catalogue actif</span></div>
+</div>
+
+<div class="tabs">
+<div class="tab on" id="tabRes" onclick="showTab('res')">R&eacute;sultats</div>
+<div class="tab" id="tabBas" onclick="showTab('bas')">Catalogues en cache</div>
+</div>
+
+<div id="viewRes">
+<div class="tools">
+<input type="text" id="filtre" placeholder="Filtrer les r&eacute;sultats..." oninput="render()">
+<button class="btn" onclick="exporter()" style="flex:0">&#11015; Excel</button>
+</div>
+<table id="tRes">
+<thead><tr><th>R&eacute;f&eacute;rence import&eacute;e</th><th>R&eacute;f&eacute;rence catalogue</th><th>Catalogue</th><th>Type</th><th>Statut</th></tr></thead>
+<tbody></tbody>
+</table>
+<div class="empty" id="emptyRes">Importez un fichier Excel puis lancez la recherche.</div>
+</div>
+
+<div id="viewBas" style="display:none">
+<div class="tools">
+<input type="text" id="filtreB" placeholder="Filtrer la base (ex. SA 14453, R007...)" oninput="renderBase()">
+</div>
+<table id="tBas">
+<thead><tr><th>R&eacute;f&eacute;rence origine</th><th>Marque</th><th>R&eacute;f&eacute;rence catalogue</th><th>Type</th><th>Statut</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+
+<footer>
+Agent Correspondance &bull; S&eacute;lectum / Nos Spare Parts &bull; Moteur multi-catalogues avec cache local (localStorage)<br>
+Les catalogues sont construits par l'agent (v&eacute;rification manuelle des sites fabricants, ex. HIFI FILTER prot&eacute;g&eacute; Cloudflare) puis charg&eacute;s ici en Excel/JSON.
+</footer>
+</div>
+
+<script>
+var HIFI_DATA = [["E100/3","BE 548","Filtre A Essence","Correspondance","MISFAT / MECAFILTER"],["E100/4","BE 549","Filtre A Essence","Correspondance","MISFAT / MECAFILTER"],["E710","BE 610","Filtre A Essence","Correspondance","MISFAT / MECAFILTER"],["F007","SN 70247","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F008","SN 30007","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F011","SN 70236","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F104","SN 99118","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F110","SN 39916","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F114","SN 99119","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F115","SN 30017","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F140","SN 99171","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F681","SN 20046","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["L095","","Non trouve","Non trouve","MISFAT / MECAFILTER"],["L097","","Non trouve","Non trouve","MISFAT / MECAFILTER"],["PU1059","SN 70236","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["L100","SO 7135","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["L104","SO 9041","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["L108","SO 9050","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["L111","SO 6097","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["L112","","","Non trouve","MISFAT / MECAFILTER"],["L114","SO 7173","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["L120","","","Non trouve","MISFAT / MECAFILTER"],["M349","SN 40529","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M351","SN 327","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M355","","","Non trouve","MISFAT / MECAFILTER"],["M358A","SN 039","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M360","SN 001","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M366","SN 6243","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M370","SN 20571","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M374","SN 25275","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M395","SN 80019","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M306","","","Non trouve","MISFAT / MECAFILTER"],["M500","SN 80124","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M501","SN 80027","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M631","SN 39923","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["M342","SN 70201","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["F147","SN 70296","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["P342","SC 9011 KIT","Kit Filtre Habitacle","Correspondance","MISFAT / MECAFILTER"],["P404","SC 4015","Filtre Habitacle","Correspondance","MISFAT / MECAFILTER"],["P410","SA 8047","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["P413","","","Non trouve","MISFAT / MECAFILTER"],["P427A","","","Non trouve","MISFAT / MECAFILTER"],["P428","","","Non trouve","MISFAT / MECAFILTER"],["P518","SA 8652","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["P520A","SA 4110","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["P533","","","Non trouve","MISFAT / MECAFILTER"],["P583A","","","Non trouve","MISFAT / MECAFILTER"],["P735A","SA 4149","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["PM802","SN 21028","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["PM803","SN 230","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["R007","SA 14453","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R014","SA 14100","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R879","SA 11685 K","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R054","SA 11790","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R055","SA 11792","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R1003","","","Non trouve","MISFAT / MECAFILTER"],["R103","SA 10077","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R1220","","","Non trouve","MISFAT / MECAFILTER"],["R1221","SA 16862","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R129","SO 518","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["R805","SA 14019","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R273","SA 4010","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R909","SA 17361","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R910","SA 17438","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R769A","","","Non trouve","MISFAT / MECAFILTER"],["R802","SA 13990","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R804","SA 14008","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R837","SA 14587","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["R924","SA 10385 K","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["RM917","SA 14652","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["RM857","SA 719","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["RM954","SA 16580","Filtre A Air","Correspondance","MISFAT / MECAFILTER"],["Z102","SO 7152","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z106A","SO 3413","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z144","SO 3477","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z164","SO 053","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z213","SN 268","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["Z232","","","Non trouve","MISFAT / MECAFILTER"],["Z237","SN 202","Filtre A Gasoil","Correspondance","MISFAT / MECAFILTER"],["Z237A","SO 7317","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z248","SO 1640","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z253","SO 11110","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z293","SO 9000","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z452","SO 6087","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z600","SO 6747","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["Z621","SO 8032","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["ZM134","","","Non trouve","MISFAT / MECAFILTER"],["ZM139","SO 11029","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["WS001","SN 909420","Filtre A Gasoil Separateur D'eau","Correspondance","MISFAT / MECAFILTER"],["WS010","SN 909110","Filtre A Gasoil Separateur D'eau","Correspondance","MISFAT / MECAFILTER"],["Z110B","SO 115","Filtre A Huile","Correspondance","MISFAT / MECAFILTER"],["2992241","SN 40529","Filtre A Gasoil","Correspondance","FIAT / New Holland / IVECO"],["2992242","SO 10038","Filtre A Huile","Correspondance","New Holland / FIAT"],["2992261","TB 1374 T","Filtre Dessicateur","Correspondance","FIAT / IVECO"],["2992544","SO 8015","Filtre A Huile","Correspondance","IVECO / FIAT"],["2992662","SN 80027","Filtre A Gasoil","Correspondance","IVECO / FIAT"],["2994048","SN 80019","Filtre A Gasoil","Correspondance","IVECO"],["2995632","AUCUNE","Non trouve","Correspondance","(fichier Voller)"],["2995964","SC 70035","Filtre Habitacle","Correspondance","IVECO"],["2996238","SA 7037","Filtre A Air","Correspondance","IVECO"],["2996416","SO 8036","Filtre A Huile","Correspondance","IVECO"],["2997305","SO 417","Filtre A Huile","Correspondance","IVECO"],["5801400571","SA 17525","Filtre A Air","Correspondance","IVECO"],["5801415504","SO 8045","Filtre A Huile","Correspondance","New Holland / IVECO"],["5801516883","SN 80057","Filtre A Gasoil","Correspondance","IVECO"],["5801620130","SN 916020","Filtre A Gasoil Separateur d'eau","Correspondance","IVECO"],["5801667204","SD 70380","Filtre A Uree (AdBlue)","Correspondance","IVECO"],["5801856860","SAO 7125","Filtre Aeration Moteur","Correspondance","New Holland"],["5802108699","SO 8055","Filtre A Huile","Correspondance","IVECO"]];
+
+/* ---------- stockage : localStorage avec fallback memoire ---------- */
+var MEMO = null;
+function loadStore(){
+  try{
+    var raw = localStorage.getItem("agentcorr_catalogues_v1");
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function saveStore(obj){
+  try{ localStorage.setItem("agentcorr_catalogues_v1", JSON.stringify(obj)); return true; }
+  catch(e){ document.getElementById("warn").style.display="block";
+    document.getElementById("warn").innerHTML="&#9888; Stockage local indisponible (ouverture en file:// sur ce navigateur). Les catalogues restent en m&eacute;moire pour cette session seulement.";
+    return false; }
+}
+
+var HIFI_NAME = "HIFI FILTER\u00AE (base 01/10/2026)";
+var CATALOGUES = loadStore();
+if(!CATALOGUES || !Object.keys(CATALOGUES).length){
+  CATALOGUES = {};
+  CATALOGUES[HIFI_NAME] = HIFI_DATA.map(function(r){
+    return {ref:r[0], hifi:r[1], type:r[2], statut:r[3], marque:r[4]};
+  });
+  saveStore(CATALOGUES);
+}
+var COURANT = Object.keys(CATALOGUES)[0];
+var SOURCES = [];
+var RESULTAT = [];
+
+function norm(s){ return String(s||"").toUpperCase().replace(/\s+/g,"").replace(/[-.\/]/g,""); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+
+/* ---------- barre catalogues ---------- */
+function selOptions(){
+  var sel = document.getElementById("selCat");
+  var names = Object.keys(CATALOGUES);
+  sel.innerHTML = "";
+  var oAll = document.createElement("option");
+  oAll.value = "*TOUS*"; oAll.textContent = "\u2605 Tous les catalogues";
+  sel.appendChild(oAll);
+  names.forEach(function(n){
+    var o = document.createElement("option");
+    o.value = n; o.textContent = n + " (" + CATALOGUES[n].length + ")";
+    sel.appendChild(o);
+  });
+  sel.value = COURANT;
+}
+function selChange(){ COURANT = document.getElementById("selCat").value; refreshStats(); renderBase(); }
+function activeEntries(){
+  if(COURANT === "*TOUS*"){
+    var all = [];
+    Object.keys(CATALOGUES).forEach(function(n){ CATALOGUES[n].forEach(function(e){ all.push({ref:e.ref,hifi:e.hifi,type:e.type,statut:e.statut,marque:e.marque,catalogue:n}); }); });
+    return all;
+  }
+  return (CATALOGUES[COURANT]||[]).map(function(e){ var c=Object.assign({},e); c.catalogue=COURANT; return c; });
+}
+function refreshStats(){
+  document.getElementById("s-bas").textContent = activeEntries().length;
+}
+
+/* ---------- import d'un fichier Excel/JSON en entrees catalogue ---------- */
+function parseFichier(text, ext){
+  if(ext === "json"){
+    var data = JSON.parse(text);
+    if(data && !Array.isArray(data) && typeof data === "object") data = data.entries || data.base || [data];
+    return data.map(function(e){
+      if(Array.isArray(e)) return {ref:e[0], hifi:e[1]||"", type:e[2]||"", statut:(e[1]?"Correspondance":"Non trouve"), marque:e[4]||""};
+      return {ref:e.ref_origine||e.ref||e.reference||"", hifi:e.ref_hifi||e.hifi||e.reference_catalogue||"", type:e.type||"", statut:e.statut||((e.ref_hifi||e.hifi)?"Correspondance":"Non trouve"), marque:e.marque_origine||e.marque||""};
+    }).filter(function(e){ return e.ref; });
+  }
+  var wb = XLSX.read(text, {type:"binary"});
+  var ws = wb.Sheets[wb.SheetNames[0]];
+  var rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:false});
+  var out = [], start = 0;
+  if(rows.length && String((rows[0]||[])[0]||"").match(/ref|reference|r\u00e9f/i)) start = 1;
+  for(var i=start;i<rows.length;i++){
+    var r = rows[i]; if(!r) continue;
+    var ref = String(r[0]||"").trim();
+    var hifi = String(r[1]||"").trim();
+    if(!ref || /^(ref|reference)/i.test(ref) && i===start) continue;
+    out.push({ref:ref, hifi:hifi, type:String(r[2]||"").trim(), statut:hifi?"Correspondance":"Non trouve", marque:String(r[3]||"").trim()});
+  }
+  return out;
+}
+
+function importerCatalogue(file){
+  var rd = new FileReader();
+  rd.onload = function(ev){
+    var ext = (file.name.split(".").pop()||"").toLowerCase();
+    var entries;
+    try{ entries = parseFichier(ev.target.result, ext); }
+    catch(x){ alert("Fichier illisible : " + x.message); return; }
+    if(!entries.length){ alert("Aucune correspondance d\u00e9tect\u00e9e (colonnes attendues : A = r\u00e9f\u00e9rence origine, B = r\u00e9f\u00e9rence catalogue)."); return; }
+    var nom = prompt("Nom du nouveau catalogue :", file.name.replace(/\.[^.]+$/,"").toUpperCase());
+    if(!nom) return;
+    if(CATALOGUES[nom]){ alert("Ce catalogue existe d\u00e9j\u00e0."); return; }
+    CATALOGUES[nom] = entries;
+    COURANT = nom;
+    saveStore(CATALOGUES); selOptions(); refreshStats(); renderBase();
+    alert("Catalogue \u00ab " + nom + " \u00bb ajout\u00e9 : " + entries.length + " r\u00e9f\u00e9rences en cache.");
+  };
+  if(ext === "json") rd.readAsText(file); else rd.readAsBinaryString(file);
+}
+
+function majCatalogue(file){
+  var rd = new FileReader();
+  rd.onload = function(ev){
+    var ext = (file.name.split(".").pop()||"").toLowerCase();
+    var entries;
+    try{ entries = parseFichier(ev.target.result, ext); }
+    catch(x){ alert("Fichier illisible : " + x.message); return; }
+    if(!entries.length){ alert("Aucune correspondance d\u00e9tect\u00e9e."); return; }
+    if(COURANT === "*TOUS*"){ alert("S\u00e9lectionnez d'abord un catalogue pr\u00e9cis \u00e0 mettre \u00e0 jour."); return; }
+    var exist = {};
+    (CATALOGUES[COURANT]||[]).forEach(function(e){ exist[norm(e.ref)] = e; });
+    var nb = 0;
+    entries.forEach(function(e){
+      var k = norm(e.ref);
+      if(exist[k]){ if(e.hifi){ exist[k].hifi = e.hifi; exist[k].statut = "Correspondance"; } }
+      else { exist[k] = e; nb++; }
+    });
+    CATALOGUES[COURANT] = Object.keys(exist).map(function(k){ return exist[k]; });
+    saveStore(CATALOGUES); selOptions(); refreshStats(); renderBase();
+    alert("Catalogue \u00ab " + COURANT + " \u00bb mis \u00e0 jour : " + nb + " nouvelles r\u00e9f\u00e9rences ajout\u00e9es.");
+  };
+  if(ext === "json") rd.readAsText(file); else rd.readAsBinaryString(file);
+}
+
+document.getElementById("fcat").addEventListener("change", function(e){
+  var f = e.target.files[0]; if(f) importerCatalogue(f); e.target.value = "";
+});
+document.getElementById("fupd").addEventListener("change", function(e){
+  var f = e.target.files[0]; if(f) majCatalogue(f); e.target.value = "";
+});
+
+function supprimerCatalogue(){
+  if(COURANT === "*TOUS*"){ alert("S\u00e9lectionnez un catalogue pr\u00e9cis \u00e0 supprimer."); return; }
+  if(!confirm("Supprimer le catalogue \u00ab " + COURANT + " \u00bb ?")) return;
+  delete CATALOGUES[COURANT];
+  COURANT = Object.keys(CATALOGUES)[0] || "*TOUS*";
+  if(!Object.keys(CATALOGUES).length){ alert("Aucun catalogue restant : ajoutez-en un pour relancer les recherches."); }
+  saveStore(CATALOGUES); selOptions(); refreshStats(); renderBase();
+}
+
+/* ---------- import du fichier source ---------- */
+document.getElementById("fsrc").addEventListener("change", function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(ev){
+    try{
+      var wb = XLSX.read(ev.target.result, {type:"binary"});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:false});
+      SOURCES = [];
+      for(var i=0;i<rows.length;i++){
+        var r = rows[i]; if(!r) continue;
+        var v = String(r[0]||"").trim();
+        if(!v && r[1]) v = String(r[1]).trim();
+        if(!v) continue;
+        if(/^(ref|reference|r\u00e9f\u00e9rence)/i.test(v) && i<3) continue;
+        SOURCES.push(v);
+      }
+      if(!SOURCES.length){ alert("Aucune r\u00e9f\u00e9rence trouv\u00e9e dans la 1\u00e8re colonne du fichier."); return; }
+      document.getElementById("srcinfo").innerHTML = "<b>" + esc(f.name) + "</b> &mdash; " + SOURCES.length + " r\u00e9f\u00e9rences d\u00e9tect\u00e9es";
+      lancerRecherche();
+    }catch(x){ alert("Erreur de lecture : " + x.message); }
+  };
+  rd.readAsBinaryString(f);
+});
+
+/* ---------- moteur de recherche (processus identique, sur cache) ---------- */
+function lancerRecherche(){
+  var entries = activeEntries();
+  if(!entries.length){ alert("Le cache catalogue est vide : ajoutez ou s\u00e9lectionnez un catalogue."); return; }
+  if(!SOURCES.length){ alert("Importez d'abord un fichier Excel (\u00e9tape 1)."); return; }
+  var idx = {};
+  entries.forEach(function(e){
+    var k = norm(e.ref);
+    if(!idx[k]) idx[k] = [];
+    idx[k].push(e);
+  });
+  var vus = {}; RESULTAT = [];
+  SOURCES.forEach(function(src){
+    var k = norm(src);
+    if(vus[k]) return;
+    vus[k] = 1;
+    var hits = idx[k] || [];
+    if(hits.length){
+      var hifiTxt = hits.map(function(h){ return h.hifi || "NON TROUVE"; }).filter(function(v,i,a){ return a.indexOf(v) === i; }).join(" / ");
+      RESULTAT.push({ref:src, hifi:hifiTxt, catalogue:hits[0].catalogue, type:hits[0].type||"", statut:hits.some(function(h){ return h.statut === "Correspondance"; }) ? "Correspondance" : "Non trouve"});
+    } else {
+      RESULTAT.push({ref:src, hifi:"", catalogue:"-", type:"", statut:"Non trouve"});
+    }
+  });
+  document.getElementById("s-tot").textContent = RESULTAT.length;
+  document.getElementById("s-ok").textContent = RESULTAT.filter(function(r){ return r.statut === "Correspondance"; }).length;
+  document.getElementById("s-ko").textContent = RESULTAT.filter(function(r){ return r.statut !== "Correspondance"; }).length;
+  render();
+}
+
+function render(){
+  var q = norm(document.getElementById("filtre").value);
+  var tb = document.querySelector("#tRes tbody"); tb.innerHTML = "";
+  var rows = RESULTAT.filter(function(r){ return !q || norm(r.ref).indexOf(q) >= 0 || norm(r.hifi).indexOf(q) >= 0; });
+  rows.forEach(function(r){
+    var tr = document.createElement("tr");
+    var hifi = r.hifi ? '<span class="mono hifi">' + esc(r.hifi) + '</span>' : '<span style="color:var(--mut)">NON TROUV&Eacute;</span>';
+    var badge = r.statut === "Correspondance" ? '<span class="badge b-ok">&#10004;</span>' : '<span class="badge b-ko">&#10007;</span>';
+    tr.innerHTML = "<td class='mono'>" + esc(r.ref) + "</td><td>" + hifi + "</td><td class='cat'>" + esc(r.catalogue) + "</td><td>" + esc(r.type) + "</td><td>" + badge + "</td>";
+    tb.appendChild(tr);
+  });
+  document.getElementById("emptyRes").style.display = rows.length ? "none" : "block";
+}
+
+function renderBase(){
+  var q = norm(document.getElementById("filtreB").value);
+  var tb = document.querySelector("#tBas tbody"); tb.innerHTML = "";
+  activeEntries().filter(function(b){ return !q || norm(b.ref).indexOf(q) >= 0 || norm(b.hifi).indexOf(q) >= 0; }).forEach(function(b){
+    var tr = document.createElement("tr");
+    var hifi = b.hifi ? '<span class="mono hifi">' + esc(b.hifi) + '</span>' : '<span style="color:var(--mut)">NON TROUV&Eacute;</span>';
+    var badge = b.statut === "Correspondance" ? '<span class="badge b-ok">&#10004;</span>' : '<span class="badge b-ko">&#10007;</span>';
+    tr.innerHTML = "<td class='mono'>" + esc(b.ref) + "</td><td>" + esc(b.marque) + "</td><td>" + hifi + "</td><td>" + esc(b.type) + "</td><td>" + badge + "</td>";
+    tb.appendChild(tr);
+  });
+  refreshStats();
+}
+
+function exporter(){
+  var data;
+  if(RESULTAT.length){
+    data = RESULTAT.map(function(r){ return {"Reference importee": r.ref, "Reference catalogue": r.hifi || "NON TROUVE"}; });
+  } else {
+    data = activeEntries().map(function(b){ return {"Reference importee": b.ref, "Reference catalogue": b.hifi || "NON TROUVE"}; });
+  }
+  if(!data.length){ alert("Aucune donn\u00e9e \u00e0 exporter."); return; }
+  var ws = XLSX.utils.json_to_sheet(data);
+  ws["!cols"] = [{wch:22},{wch:26}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Correspondances");
+  XLSX.writeFile(wb, "Correspondances_Export_" + new Date().toISOString().slice(0,10) + ".xlsx");
+}
+
+function showTab(t){
+  document.getElementById("viewRes").style.display = t === "res" ? "block" : "none";
+  document.getElementById("viewBas").style.display = t === "bas" ? "block" : "none";
+  document.getElementById("tabRes").classList.toggle("on", t === "res");
+  document.getElementById("tabBas").classList.toggle("on", t === "bas");
+  if(t === "bas") renderBase();
+}
+
+selOptions(); refreshStats(); renderBase();
+</script>
+</body>
+</html>
